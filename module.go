@@ -86,12 +86,10 @@ func (s *midiControllerMidiInputReader) listenToMidiInput() {
 		switch {
 		case msg.GetNoteOn(&ch, &key, &vel):
 			s.midiReadings.Keys[key] = struct{}{}
-			s.midiReadings.Channels[ch] = struct{}{}
-			s.midiReadings.Velocities[vel] = struct{}{}
-		case msg.GetNoteOff(&ch, &key, &vel):
+			// s.midiReadings.Velocities[vel] = struct{}{}
+		case msg.GetNoteEnd(&ch, &key):
 			delete(s.midiReadings.Keys, key)
-			delete(s.midiReadings.Channels, ch)
-			delete(s.midiReadings.Velocities, vel)
+			// delete(s.midiReadings.Velocities, vel)
 		}
 	}, midi.UseSysEx())
 
@@ -160,17 +158,7 @@ func (s *midiControllerMidiInputReader) NewClientFromConn(ctx context.Context, c
 	return client, nil
 }
 
-func (s *midiControllerMidiInputReader) resetMidiReadings() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.midiReadings = midiMessage{
-		Channels:   make(map[uint8]struct{}),
-		Keys:       make(map[uint8]struct{}),
-		Velocities: make(map[uint8]struct{}),
-	}
-}
-
-func (s *midiControllerMidiInputReader) toListOverKeys(m map[uint8]struct{}) string {
+func (s *midiControllerMidiInputReader) toString(m map[uint8]struct{}) string {
 	if len(m) == 0 {
 		return ""
 	}
@@ -182,20 +170,17 @@ func (s *midiControllerMidiInputReader) toListOverKeys(m map[uint8]struct{}) str
 		keys[i] = fmt.Sprintf("%d", k)
 		i++
 	}
-	return strings.Join(keys, " ")
+	return strings.Join(keys, ", ")
 }
 
 func (s *midiControllerMidiInputReader) Readings(ctx context.Context, extra map[string]interface{}) (map[string]interface{}, error) {
 	s.mu.Lock() // Read lock for concurrent safe access
+	defer s.mu.Unlock()
 	// Return a copy of the readings to prevent external modification
 	copiedReadings := make(map[string]interface{})
 	s.logger.Info("Reading MIDI input data...", s.midiReadings)
 
-	copiedReadings["keys"] = s.toListOverKeys(s.midiReadings.Keys)
-	copiedReadings["channels"] = s.toListOverKeys(s.midiReadings.Channels)
-	copiedReadings["velocities"] = s.toListOverKeys(s.midiReadings.Velocities)
-	s.mu.Unlock()
-	s.resetMidiReadings()
+	copiedReadings["keys"] = s.toString(s.midiReadings.Keys)
 	return copiedReadings, nil
 }
 
