@@ -2,18 +2,18 @@
   "$schema": "https://dl.viam.dev/module.schema.json",
   "module_id": "jalen:midi-controller",
   "visibility": "private",
-  "url": "",
+  "url": "https://github.com/jgeaso1266/midi-controller",
   "description": "Modular sensor component: midi-input-reader",
   "models": [
     {
       "api": "rdk:component:sensor",
       "model": "jalen:midi-controller:midi-input-reader",
       "short_description": "Provide a short (100 characters or less) description of this model here",
-      "markdown_link": "README.md#model-jalenmidi-controllermidi-input-reader"
+      "markdown_link": "README.md#configuration"
     }
   ],
   "applications": null,
-  "markdown_link": "",
+  "markdown_link": "README.md#modulemidi-controller",
   "entrypoint": "bin/midi-controller",
   "first_run": "",
   "build": {
