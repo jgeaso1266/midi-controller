@@ -17,9 +17,8 @@ import (
 )
 
 var (
-	MidiInputReader  = resource.NewModel("jalen", "midi-controller", "midi-input-reader")
-	errUnimplemented = errors.New("unimplemented")
-	errNotFound      = errors.New("not found")
+	MidiInputReader = resource.NewModel("jalen", "midi-controller", "midi-input-reader")
+	errNotFound     = errors.New("not found")
 )
 
 func init() {
@@ -48,9 +47,7 @@ func (cfg *Config) Validate(path string) ([]string, []string, error) {
 }
 
 type midiMessage struct {
-	Channels   map[uint8]struct{}
-	Keys       map[uint8]struct{}
-	Velocities map[uint8]struct{}
+	NotesInfo map[uint8]uint8
 }
 
 type midiControllerMidiInputReader struct {
@@ -84,12 +81,12 @@ func (s *midiControllerMidiInputReader) listenToMidiInput() {
 		defer s.mu.Unlock() // Unlock after writing
 
 		switch {
-		case msg.GetNoteOn(&ch, &key, &vel):
-			s.midiReadings.Keys[key] = struct{}{}
-			// s.midiReadings.Velocities[vel] = struct{}{}
+		case msg.GetNoteStart(&ch, &key, &vel):
+			s.logger.Infof("MIDI Note Start: %d", key)
+			s.midiReadings.NotesInfo[key] = vel
 		case msg.GetNoteEnd(&ch, &key):
-			delete(s.midiReadings.Keys, key)
-			// delete(s.midiReadings.Velocities, vel)
+			s.logger.Infof("MIDI Note End: %d", key)
+			delete(s.midiReadings.NotesInfo, key)
 		}
 	}, midi.UseSysEx())
 
@@ -99,8 +96,6 @@ func (s *midiControllerMidiInputReader) listenToMidiInput() {
 	}
 	defer stopFn() // Stop the MIDI listening when the goroutine exits
 
-	// Keep the Goroutine alive until the context is cancelled
-	<-s.cancelCtx.Done()
 	s.logger.Info("MIDI input listener stopped.")
 }
 
@@ -125,9 +120,7 @@ func NewMidiInputReader(ctx context.Context, deps resource.Dependencies, name re
 		cancelCtx:  cancelCtx,
 		cancelFunc: cancelFunc,
 		midiReadings: midiMessage{
-			Channels:   make(map[uint8]struct{}),
-			Keys:       make(map[uint8]struct{}),
-			Velocities: make(map[uint8]struct{}),
+			NotesInfo: make(map[uint8]uint8),
 		},
 	}
 
@@ -158,19 +151,21 @@ func (s *midiControllerMidiInputReader) NewClientFromConn(ctx context.Context, c
 	return client, nil
 }
 
-func (s *midiControllerMidiInputReader) toString(m map[uint8]struct{}) string {
+func (s *midiControllerMidiInputReader) toString(m map[uint8]uint8) (string, string) {
 	if len(m) == 0 {
-		return ""
+		return "", ""
 	}
 
 	keys := make([]string, len(m))
+	velocities := make([]string, len(m))
 
 	i := 0
 	for k := range m {
 		keys[i] = fmt.Sprintf("%d", k)
+		velocities[i] = fmt.Sprintf("%d", m[k])
 		i++
 	}
-	return strings.Join(keys, ", ")
+	return strings.Join(keys, ", "), strings.Join(velocities, ", ")
 }
 
 func (s *midiControllerMidiInputReader) Readings(ctx context.Context, extra map[string]interface{}) (map[string]interface{}, error) {
@@ -178,9 +173,8 @@ func (s *midiControllerMidiInputReader) Readings(ctx context.Context, extra map[
 	defer s.mu.Unlock()
 	// Return a copy of the readings to prevent external modification
 	copiedReadings := make(map[string]interface{})
-	s.logger.Info("Reading MIDI input data...", s.midiReadings)
 
-	copiedReadings["keys"] = s.toString(s.midiReadings.Keys)
+	copiedReadings["keys"], copiedReadings["velocities"] = s.toString(s.midiReadings.NotesInfo)
 	return copiedReadings, nil
 }
 
