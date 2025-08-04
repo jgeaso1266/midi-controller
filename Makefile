@@ -38,4 +38,4 @@ module: test module.tar.gz
 all: test module.tar.gz
 
 setup:
-	go mod tidy
+	go mod tidy && apt-get install -y libasound2-dev

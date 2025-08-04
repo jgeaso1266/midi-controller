@@ -21,7 +21,7 @@
     "setup": "make setup",
     "path": "bin/module.tar.gz",
     "arch": [
-      "linux/amd64",
+      "darwin/arm64",
       "linux/arm64"
     ]
   }
