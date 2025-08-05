@@ -48,6 +48,7 @@ func (cfg *Config) Validate(path string) ([]string, []string, error) {
 
 type midiMessage struct {
 	NotesInfo map[uint8]uint8
+	Damper    uint8 // 0 for released, number above 64 for pressed
 }
 
 type midiControllerMidiInputReader struct {
@@ -64,7 +65,7 @@ type midiControllerMidiInputReader struct {
 	inPort       drivers.In
 	midiReadings midiMessage
 	mu           sync.RWMutex
-	stopFn	   func()
+	stopFn       func()
 }
 
 func (s *midiControllerMidiInputReader) listenToMidiInput() {
@@ -76,7 +77,7 @@ func (s *midiControllerMidiInputReader) listenToMidiInput() {
 	}
 
 	stopFn, err := midi.ListenTo(s.inPort, func(msg midi.Message, timestampms int32) {
-		var ch, key, vel uint8
+		var ch, key, vel, damper, damperVal uint8
 		s.mu.Lock()         // Lock the mutex before writing to readings
 		defer s.mu.Unlock() // Unlock after writing
 
@@ -87,6 +88,16 @@ func (s *midiControllerMidiInputReader) listenToMidiInput() {
 		case msg.GetNoteEnd(&ch, &key):
 			s.logger.Infof("MIDI Note End: %d", key)
 			delete(s.midiReadings.NotesInfo, key)
+		case msg.GetControlChange(&ch, &damper, &damperVal):
+			if damper == 64 { // Damper pedal control change
+				if damperVal > 0 {
+					s.logger.Infof("MIDI Damper Pedal Pressed")
+					s.midiReadings.Damper = damperVal // Store the value when pressed
+				} else {
+					s.logger.Infof("MIDI Damper Pedal Released")
+					s.midiReadings.Damper = 0 // Reset to 0 when released
+				}
+			}
 		}
 	}, midi.UseSysEx())
 
@@ -95,7 +106,7 @@ func (s *midiControllerMidiInputReader) listenToMidiInput() {
 		return
 	}
 
-	s.stopFn = stopFn	
+	s.stopFn = stopFn
 }
 
 func newMidiControllerMidiInputReader(ctx context.Context, deps resource.Dependencies, rawConf resource.Config, logger logging.Logger) (sensor.Sensor, error) {
@@ -175,6 +186,7 @@ func (s *midiControllerMidiInputReader) Readings(ctx context.Context, extra map[
 	copiedReadings := make(map[string]interface{})
 
 	copiedReadings["keys"], copiedReadings["velocities"] = s.toString(s.midiReadings.NotesInfo)
+	copiedReadings["damper"] = s.midiReadings.Damper
 	return copiedReadings, nil
 }
 
