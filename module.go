@@ -64,6 +64,7 @@ type midiControllerMidiInputReader struct {
 	inPort       drivers.In
 	midiReadings midiMessage
 	mu           sync.RWMutex
+	stopFn	   func()
 }
 
 func (s *midiControllerMidiInputReader) listenToMidiInput() {
@@ -73,7 +74,6 @@ func (s *midiControllerMidiInputReader) listenToMidiInput() {
 		s.logger.Errorf("Failed to open MIDI input port %s: %v", s.cfg.InPortName, err)
 		return
 	}
-	defer s.inPort.Close() // Ensure the port is closed when the goroutine exits
 
 	stopFn, err := midi.ListenTo(s.inPort, func(msg midi.Message, timestampms int32) {
 		var ch, key, vel uint8
@@ -94,9 +94,8 @@ func (s *midiControllerMidiInputReader) listenToMidiInput() {
 		s.logger.Errorf("Failed to start MIDI listener for port %s: %v", s.cfg.InPortName, err)
 		return
 	}
-	defer stopFn() // Stop the MIDI listening when the goroutine exits
 
-	s.logger.Info("MIDI input listener stopped.")
+	s.stopFn = stopFn	
 }
 
 func newMidiControllerMidiInputReader(ctx context.Context, deps resource.Dependencies, rawConf resource.Config, logger logging.Logger) (sensor.Sensor, error) {
@@ -122,6 +121,7 @@ func NewMidiInputReader(ctx context.Context, deps resource.Dependencies, name re
 		midiReadings: midiMessage{
 			NotesInfo: make(map[uint8]uint8),
 		},
+		stopFn: nil,
 	}
 
 	var err error
@@ -131,7 +131,7 @@ func NewMidiInputReader(ctx context.Context, deps resource.Dependencies, name re
 	}
 
 	// Start the MIDI listener in a Goroutine
-	go s.listenToMidiInput()
+	s.listenToMidiInput()
 
 	return s, nil
 }
@@ -185,5 +185,7 @@ func (s *midiControllerMidiInputReader) DoCommand(ctx context.Context, cmd map[s
 func (s *midiControllerMidiInputReader) Close(context.Context) error {
 	midi.CloseDriver()
 	s.cancelFunc()
+	s.stopFn()
+	s.inPort.Close()
 	return nil
 }
